@@ -1,0 +1,100 @@
+local fov = 30
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local Players = game:GetService("Players")
+local Cam = game.Workspace.CurrentCamera
+
+local FOVring = Drawing.new("Circle")
+FOVring.Visible = true
+FOVring.Thickness = 1
+FOVring.Color = Color3.fromRGB(255, 0, 0) -- Red color
+FOVring.Filled = false
+FOVring.Radius = Cam.ViewportSize.magnitude / 20  -- Adjusted radius (reduced from /10 to /20)
+FOVring.Position = Cam.ViewportSize / 2
+
+local function updateDrawings()
+    local camViewportSize = Cam.ViewportSize
+    FOVring.Position = camViewportSize / 2
+end
+
+local function onKeyDown(input)
+    if input.KeyCode == Enum.KeyCode.Delete then
+        RunService:UnbindFromRenderStep("FOVUpdate")
+        FOVring:Remove()
+    end
+end
+
+UserInputService.InputBegan:Connect(onKeyDown)
+
+local function isVisibleThroughWalls(part)
+    local rayDirection = (part.Position - Cam.CFrame.Position).unit
+    local ray = Ray.new(Cam.CFrame.Position, rayDirection * 1000)
+    local hitPart, hitPosition = game.Workspace:FindPartOnRayWithIgnoreList(ray, {Cam, game.Players.LocalPlayer.Character})
+
+    return hitPart == nil or hitPart:IsDescendantOf(part.Parent)
+end
+
+local function isPlayerVisible(player, targetPart)
+    local playerCharacter = player.Character
+    if not playerCharacter then
+        return false
+    end
+
+    local targetPosition = playerCharacter:FindFirstChild(targetPart)
+    if not targetPosition then
+        return false
+    end
+
+    local ePos, isVisible = Cam:WorldToViewportPoint(targetPosition.Position)
+    local distance = (Vector2.new(ePos.x, ePos.y) - Cam.ViewportSize / 2).Magnitude
+
+    return isVisible and distance < fov and isVisibleThroughWalls(targetPosition)
+end
+
+local function lookAt(target)
+    local lookVector = (target - Cam.CFrame.Position).unit
+    local ray = Ray.new(Cam.CFrame.Position, lookVector * 1000)
+    local hitPart, hitPosition = game.Workspace:FindPartOnRayWithIgnoreList(ray, {Cam, game.Players.LocalPlayer.Character})
+    
+    if hitPart then
+        local newCFrame = CFrame.new(Cam.CFrame.Position, hitPosition)
+        Cam.CFrame = newCFrame
+    else
+        -- If no obstruction found, directly look at the target
+        local newCFrame = CFrame.new(Cam.CFrame.Position, target)
+        Cam.CFrame = newCFrame
+    end
+end
+
+local function getClosestPlayerInFOV(trg_part)
+    local nearest = nil
+    local last = math.huge
+    local playerMousePos = Cam.ViewportSize / 2
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= Players.LocalPlayer then
+            local part = player.Character and player.Character:FindFirstChild(trg_part)
+            if part then
+                local ePos, isVisible = Cam:WorldToViewportPoint(part.Position)
+                local distance = (Vector2.new(ePos.x, ePos.y) - playerMousePos).Magnitude
+
+                if distance < last and isVisible and distance < fov and isVisibleThroughWalls(part) then
+                    last = distance
+                    nearest = player
+                end
+            end
+        end
+    end
+
+    return nearest
+end
+
+RunService.RenderStepped:Connect(function()
+    updateDrawings()
+    local closest = getClosestPlayerInFOV("HumanoidRootPart")
+    if closest and closest.Character:FindFirstChild("HumanoidRootPart") then
+        lookAt(closest.Character.HumanoidRootPart.Position)
+    end
+end)
+
+UserInputService.InputBegan:Connect(onKeyDown)￼Enter
